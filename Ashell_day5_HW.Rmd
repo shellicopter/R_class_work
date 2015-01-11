@@ -1,0 +1,131 @@
+---
+title: "Day 5 Homework"
+output: html_document
+---
+
+0. Start out by getting your data into "long" format.
+```{r}
+library(reshape2)
+library(ggplot2)
+getwd()
+setwd("~/Dropbox/Winter 2015/R class")
+d<- read.csv("AlisonS data.csv") #read in data
+#head(d) #peak at data- need to cut out extra columns at end for now
+d2<-d[ ,c(1:3,5, 10:16)]# just look at important cols
+head(d2)
+melt.d1<-reshape2:::melt.data.frame(d2,id.vars = 1:4, variable.name = "measure", value.name = "MT")
+head(melt.d1) #had to use this weird call method for melt to get the variable name stuff to work..
+
+```
+
+1. Pick a single numerical variable from your data.  Use `ggplot` to plot a histogram and a density plot (separately).
+   - Try some different values for `binwidth` for the histogram.
+   - Try some different values for `adjust` for the density plot.
+   
+```{r}
+levels(melt.d1$measure) #check all the possible options of measures
+RT.d<-subset(melt.d1, measure =="RT") #subset just the RT data
+head(RT.d)
+ggplot(RT.d, aes(MT))+geom_histogram()
+ggplot(RT.d, aes(MT))+geom_histogram(binwidth = 100) #this looks good in terms of binning
+ggplot(RT.d, aes(MT))+geom_histogram(binwidth = 50)
+```
+
+2. How does the distribution look?  Try transforming the variable and try to get it to look more normal (i.e., more Gaussian).  If it already looks normal, do something to it to make it look non-normal.
+-the distribution looks kind of skewed! (it is RT so prob should try log RT)
+```{r}
+ggplot(RT.d, aes(log(MT)))+geom_histogram() # logged RT looks much more normal
+```
+
+3. Is there a factor that you can use to break up this variable into groups of observations?  If not, reshape your data so that there is, or create a factor if necessary.  Then, do the following:
+   - Plot it as a density plot, mapping `color` to the factor
+   - Same, but try using `fill` instead of `color`
+   - Same, using `linetype` instead of `color`
+   - Plot the data as a boxplot, with the factor as `x` and the numerical variable as `y`
+```{r}
+head(RT.d$code)
+dcode<-colsplit(RT.d$code, "_", c("WordCond", "StroopCond", "half", "third")) # split up code column into 4 more useful columns
+head(dcode)
+d2RT<-cbind(dcode, RT.d) #combine the new 4 cols with the old data- maybe delete old code col later...
+head(d2RT) #this is beter, now I can work with more meaningful factors! 
+ggplot(d2RT, aes(log(MT))) +geom_density(aes(color = WordCond))
+ggplot(d2RT, aes(log(MT))) +geom_density(aes(fill = WordCond))
+ggplot(d2RT, aes(log(MT))) +geom_density(aes(linetype = WordCond))
+ggplot(d2RT, aes(x= WordCond, y= log(MT))) +geom_boxplot(aes())
+```
+
+4. Now let's look at breaking up a histogram across a factor.  With the same variables you used in #3:
+   - Plot a histogram, but use faceting to display them, one above the other.
+   - Try mapping the factor to `color` or `fill`, to see what that looks like.
+   - Which one seems most useful or informative for your data, and why?
+```{r}
+ggplot(d2RT, aes(log(MT))) +geom_histogram(aes(color = WordCond)) #this looks weird
+ggplot(d2RT, aes(log(MT))) +geom_histogram(aes(fill = WordCond)) #this looks more useful- mostly just easier to read
+```
+
+
+5. Now find two numerical variables.  You may need to reshape your data.  For example, if you have one numerical variable and a "condition" factor, you could use `dcast` to spread that variable across multiple columns (one per level of the factor).  Once you have two numerical variables:
+   - Create a scatterplot, with one variable mapped to `x` and the other to `y`.
+   - Plot a "loess" smoother on top of the scatterplot
+   - Plot a regression line on top of the scatterplot (instead of the loess)
+```{r}
+head(melt.d1) #back to the original melted data I'm going to do the col split at this point to get the factors that I care about out of the code column for this dataframe
+dcode1<-colsplit(melt.d1$code, "_", c("WordCond", "StroopCond", "half", "third")) # split up code column into 4 more useful columns
+head(dcode1)
+split.d<-cbind(dcode1, melt.d1) #combine the new 4 cols with the old data- maybe delete old code col later...
+head(split.d)  # ok now all the data is in long format but the code column is split up-
+cast.d2<-dcast(split.d, WordCond + StroopCond + half+ third +subject+ trial+ stimfile+ code ~measure, value = "MT" )
+head(cast.d2) #looks like it initally did!
+
+ggplot(cast.d2, aes(x = RT, y = init.time)) + geom_point()+ # plot of RT by initiation time
+geom_smooth(method = loess)    #loess smooth
+
+ggplot(cast.d2, aes(x = RT, y = init.time)) + geom_point()+ 
+geom_smooth(method = "lm") #regression line
+
+```
+
+6. Are there any other factors that split up the variable plotted in #5?  If so try the following:
+   - Map the factor to `color`
+   - Facet by the factor
+   
+```{r}
+ggplot(cast.d2, aes(x = RT, y = init.time))+ geom_point(aes(color = cast.d2$WordCond)) #colors represent word condition
+ggplot(cast.d2, aes(x = RT, y = init.time))+ geom_point()+
+facet_wrap(~WordCond) #faceted by wordcond
+```
+
+
+7. Output all of the plots above as a single PDF.
+```{r}
+pdf("AS_HW5_plot.pdf", width = 10, height = 4, title = "Alison's Plots")
+ggplot(RT.d, aes(MT))+geom_histogram()
+ggplot(RT.d, aes(MT))+geom_histogram(binwidth = 100)
+ggplot(RT.d, aes(log(MT)))+geom_histogram() 
+ggplot(d2RT, aes(log(MT))) +geom_density(aes(color = WordCond))
+ggplot(d2RT, aes(log(MT))) +geom_density(aes(fill = WordCond))
+ggplot(d2RT, aes(log(MT))) +geom_density(aes(linetype = WordCond))
+ggplot(d2RT, aes(x= WordCond, y= log(MT))) +geom_boxplot(aes())
+ggplot(d2RT, aes(log(MT))) +geom_histogram(aes(color = WordCond))
+ggplot(d2RT, aes(log(MT))) +geom_histogram(aes(fill = WordCond))
+ggplot(cast.d2, aes(x = RT, y = init.time)) + geom_point()+
+geom_smooth(method = loess)
+ggplot(cast.d2, aes(x = RT, y = init.time)) + geom_point()+ 
+geom_smooth(method = "lm")
+ggplot(cast.d2, aes(x = RT, y = init.time))+ geom_point(aes(color = cast.d2$WordCond))
+ggplot(cast.d2, aes(x = RT, y = init.time))+ geom_point()+
+facet_wrap(~WordCond) 
+dev.off()
+
+```
+
+
+8. Is there a better type of visualization for your data?  What numbers would you like to be able to visualize better?  Be as explicit as possible, and write some "pseudo-code" to ilustrate what you think you would like.
+-I'd like to look at these data by looking at each DV measurement seperaptely but broken up by IV condition- within the same graph:
+plot: WordCond+StroopCond~ RT, init.time, sum(AUC1+AUC2), sum (MD1+MD2)
+I'd also like to possibly facet this by half:
++facet_wrap(half)
+
+9. Save your Markdown document that answers all of these questions (with code) as well as your PDF, and commit them as changes to your git homework repository.  Push those changes to GitHub by Monday morning at 9am.
+
+
