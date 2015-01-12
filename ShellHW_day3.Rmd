@@ -1,0 +1,91 @@
+---
+title: "Day 3 Homework"
+output: html_document
+---
+
+The goal of this homework is to get practice with manipulating data.
+
+1. Make both a "wide" and a "long" version of your data
+```{r}
+library(reshape2)
+getwd()
+setwd("~/Dropbox/Winter 2015/R class")
+d<- read.csv("AlisonS data.csv") #read in data
+#head(d) #peak at data- need to cut out extra columns at end for now
+d1<-d[ ,1:16]# just take the first 16 cols
+head(d1)
+wided<-dcast(d1, subject~code+trial, value.var = "RT") #not sure if this is very helpful (already pretty wide!)
+#for melting (and probably good to do anyway- code these variables as character/factors)
+d1$subject<-as.character(d1$subject) #code sub as character
+d1$trial<-as.character(d1$trial) #code trial as character,
+d1$trial<-as.factor(d1$trial) # then factor
+d1$code<-as.character(d1$code) #code trial as character,
+d1$trial<-as.factor(d1$code) # then factor
+mycols <-c(1,2,5, 10:12) #narrow it down even more so melt doesn't complain later- these columns are simple without missing val, weird codes, etc.
+melt.d<-d[ ,mycols]
+melt.d2<-melt(melt.d, measure.vars = c("RT","init.time", "error"), na.rm = TRUE) #melted into longer format!
+head(melt.d2)
+```
+
+2. Transform a variable
+```{r}
+d1$logRT<-log(d1$RT) #log transform RT
+#summary(d1)
+
+```
+NOTE: before moving on I'm going to do #6 which will make my life easier
+6. Choose a factor that could be re-coded as multiple dimensions (recall the sepal/petal vs. length/width breakdown). If you don't have one, try to create one.  Now create two (or more) new factors that represent these dimensions.
+
+```{r}
+dcode<-colsplit(d$code, "_", c("WordCond", "StroopCond", "half", "third")) # split up code column into 4 more useful columns
+d2<-cbind(dcode, d1) #combine the new 4 cols with the old data- maybe delete old code col later...
+head(d2) #looks better! 
+#note: there appears to be something weird here- h1 and h2 should be equal, t1,2,3 should all be equal- check that this was coded properly originally
+```
+3. Recode a factor
+```{r}
+levels(d2$WordCond)
+levels(d2$WordCond)<-c("cognate", "falseFriend", "nonsense") #rename wordcond levels
+```
+
+4. Add a new factor, where the levels are conditional on the values of some other variable. E.g., a factor of "high", "medium", and "low" based on thresholds for another variable.
+```{r}
+#using this here to check out issues with half and third cols- should be based on trial#
+trial.sum <-summary(d2$trial) # can't figure out how to extract this from summary so using #'s for now
+numtrials <-590-16
+h1 = numtrials/2
+h1
+t1 = numtrials/3
+t1
+t2 = t1*2
+t2
+d2$new_half[d2$trial<= h1] <-"half_1"
+d2$new_half[d2$trial> h1] <-"half_2"
+d2$new_half<-as.factor(d2$new_half)
+summary(d2)
+d2$new_third[d2$trial <=t1] <-"third_1"
+d2$new_third[d2$trial >t1 & d2$trial <= t2]<-"third_2"
+d2$new_third[d2$trial > t2]<-"third_3"
+d2$new_third<-as.factor(d2$new_third)
+#summary(d2$new_third)
+# ok so it looks like there's something funky going on with the data itself- maybe I'm missing some rows at the bottom from some of the participants?
+```
+
+5. Reorder the levels of this new factor
+```{r}
+levels(d2$new_half)
+d2$new_half <-relevel(d2$new_half,"half_2") #just for kicks- flipping half1 and half2
+levels(d2$new_half)
+```
+
+7. Using `dcast`, aggregate some variable into "cell means" of some kind.
+```{r}
+dcast(d2, .~WordCond+StroopCond, value.var = "logRT", fun.aggregate = ,mean, na.rm=TRUE)# look at mean logRT by word and stroop type
+dcast(d2, WordCond~StroopCond, value.var = "logRT", fun.aggregate = ,mean, na.rm=TRUE) #this makes a nicer table
+#below are extra ones I wanted to check while I'm at it
+#dcast(d2, .~WordCond+StroopCond, value.var = "error", fun.aggregate = ,mean, na.rm=TRUE) # just for fun!
+#dcast(d2, .~WordCond+StroopCond, value.var = "init.time", fun.aggregate = ,mean, na.rm=TRUE)
+#these seem to show some potentially intersting patterns!
+```
+
+8.  Save all of the above in a well-documented R Markdown document.  Email me the .Rmd file (and if you use different or updated data from Day 2 Homework, send that to me, too).
