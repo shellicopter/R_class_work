@@ -1,0 +1,69 @@
+---
+title: "Day 6 Homework"
+output: html_document
+---
+```{r}
+library(reshape2)
+
+```
+
+1. Think carefully about your data.  Think about something you would like to do multiple times, to subsets of your data. 
+-Just wanted to first take a look at the data again first to see what I'm working with...
+```{r}
+setwd("~/Dropbox/Winter 2015/R class")
+d<- read.csv("AlisonS data.csv") #read in data
+#head(d) #peak at data- need to cut out extra columns at end for now
+d2<-d[ ,c(1:3,5, 10:16)]# just look at important cols
+head(d2)
+```
+
+2. Write out (in plain English, in the notebook) what you are trying to do
+For only the accurate trials (error = 0) I'd like to take the mean and standard deviation of each subject for future trimming purposes
+
+3. Write some "pseudo-code" comments in an R chunk, as an outline
+```{r}
+# accdata<- mydata[mydata$error ==0] (or if mydata$ errror == 0...)
+# for (sub1: numsubjects){
+# get mean(RT), get SD(RT) and add to vectors meanRT, SD
+```
+
+4. Write some (real) code that will do what you want ONCE, on one subset of the data.
+```{r}
+d2$subject<-as.factor(d2$subject) #this was listed as an integer which is wrong
+class(d2$subject) # this looks better- now I can subset by it
+#if (d2$error ==0){
+mysub<-d2[d2$subject == "101", ] #just sub101
+my.meanRT<-mean(mysub$RT)
+my.meanRT
+```
+
+
+5. Copy that code chunk, and convert it into a loop, which will do what you want over all the groups, concatenating the results.
+```{r}
+d2$subject<-as.factor(d2$subject)
+my.subs<-c(101:139)
+myRT.means<-vector(length = length(my.subs))
+for(subnum in 1: length(my.subs)) {
+mysub<-my.subs[subnum]#call nth sub
+sub.RTs<-d2[d2$subject == mysub, "RT"]
+myRT.means[subnum]<-mean(sub.RTs, na.rm = TRUE)
+}
+myRT.means #lists means and also missing subjects as Nan's
+```
+
+6. Copy that loop again, and at a condition (`if`) statement to add some further control about ignoring some groups or some other conditional operation.
+```{r}
+d2$subject<-as.factor(d2$subject)
+my.subs<-c(101:139)
+myRT.means<- rep("NA", length(my.subs))
+for(subnum in 1: length(my.subs)) {
+mysub<-my.subs[subnum]#call nth sub
+sub.RTs<-d2[d2$subject == mysub, "RT"]
+sub.errors<-d2[d2$subject == mysub, "error"]
+#if (sub.errors[subnum] !=1) {   # GAH! I REALLY want to put this control in the loop (if error isn't 1, then continue) but I can't figure it out because the loop has to be finished to change the "subnum" to anything...I give up for now.
+myRT.means[subnum]<-mean(sub.RTs, na.rm = TRUE)
+}
+}
+myRT.means #lists means and also missing subjects as Nan's
+```
+Couldn't quite finish this last one the way I wanted to.
