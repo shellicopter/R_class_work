@@ -1,0 +1,130 @@
+---
+title: "Day 7 Homework"
+output: html_document
+---
+
+```{r}
+library(reshape2)
+library(ggplot2)
+library(lme4)
+library(stats)
+getwd()
+setwd("~/Dropbox/Winter 2015/R class")
+d<- read.csv("AlisonS data.csv") #read in data
+#head(d) #peak at data- need to cut out extra columns at end for now
+d1<-d[ ,1:16]# just take the first 16 cols
+head(d1)
+
+d1$subject<-as.character(d1$subject) #code sub as character
+d1$trial<-as.character(d1$trial) #code trial as character,
+d1$trial<-as.factor(d1$trial) # then factor
+d1$code<-as.character(d1$code) #code trial as character,
+d1$trial<-as.factor(d1$code) # then factor
+mycols <-c(1,2,5, 10:12) #narrow it down even more 
+head(d1)
+```
+
+create log RT column: note- might want to log init.time as well?
+```{r}
+d1$logRT<-log(d1$RT) #log transform RT
+summary(d1)
+```
+split up code into its components:
+
+```{r}
+dcode<-colsplit(d$code, "_", c("WordCond", "StroopCond", "half", "third")) # 
+d2<-cbind(dcode, d1) #combine the new 4 cols with the old data- maybe delete old code col later...
+head(d2) #
+d2$half<-as.factor(d2$half)
+d2$third<-as.factor(d2$third)
+```
+For looking at RT data- only look at subset of accurate data
+```{r}
+acc.d<-d2[d2$error ==0, ]
+summary(acc.d$error) #check- yup- worked
+```
+
+Checking some cell means just for data exploration, tables, etc.
+```{r}
+#these use acc.d- only looking at accurate trials here
+mean.RT<-dcast(acc.d, WordCond~StroopCond, value.var = "RT", fun.aggregate = ,mean, na.rm=TRUE)
+mean.logRT<-dcast(acc.d, WordCond~StroopCond, value.var = "logRT", fun.aggregate = ,mean, na.rm=TRUE) #
+mean.init.time<-dcast(acc.d, WordCond~StroopCond, value.var = "init.time", fun.aggregate = ,mean, na.rm=TRUE)
+#looks like init.time might have something happening?
+#error rate uses all data:
+mean.error.rate<-dcast(d2, WordCond~StroopCond, value.var = "error", fun.aggregate = ,mean, na.rm=TRUE) # 
+
+```
+combine cols AUC1&2 and MD1&2 into 1 col each:
+-*NOTE: THIS ISN"T WORKING-I've been mucking around with it a lot- says things about the replacement not being the right #..*l
+```{r}
+d2$AUC<- d2$AUC_2
+length(d2$AUC)
+length(d2$AUC_2)
+d2$AUC[is.na(d2$AUC_2)] <-d2$AUC_2[is.na(d2$AUC_1)]
+summary(d2$AUC) #new AUC column!
+#same thing for MD
+d2$MD<- d2$MD_2
+head(d2)
+d2$MD_1[is.na(d2$MD)] <-d2$MD_2[is.na(d2$MD_1)]
+summary(d2$MD)
+head(d2)
+```
+Split up "stimfile" column by \ and extract the .wav (and maybe also the final .jpg) to get the "item" (and maybe also to check if there is any influence of final Stroop color)
+```{r}
+
+```
+
+Add in stroop error data and merge
+```{r}
+
+```
+
+Add in LEAPQ data by subject and merge
+```{r}
+
+```
+
+First contrast code factors:
+```{r}
+contrasts##finish here
+```
+
+Then run a preliminary analysis on logRT and init.time by word*stroop cond: (eventually will want to add a random slope by item as well)
+
+```{r}
+logRT.model<-lmer(logRT~WordCond*StroopCond+(WordCond+StroopCond|subject), data = d2)
+summary(logRT.model) # no interactions
+init.model<-lmer(log(init.time)~WordCond*StroopCond+(1|subject), data = d2) #log initiation time
+summary(init.model) # no interactions - no effects of stroop...
+```
+analysis on errors per condition:
+```{r}
+error.model <-glmer(error~WordCond*StroopCond+(1|subject), data = d2, family = "binomial")
+summary(error.model) # main effect of wordcond but not stroop or interaction
+```
+now same analysis but just look at 2nd/3rd third because the first part was kind of guessing.
+```{r}
+#note: for analyses the full models would not converge so I used reduced models...maybe try different optimizers?
+end.d <-d2[d2$third != "t1",]
+end.d<-droplevels(end.d)
+summary(end.d)
+logRT.model<-lmer(logRT~WordCond*StroopCond+(WordCond+StroopCond|subject), data = end.d)
+summary(logRT.model) # now its very close to a main effect of stroop
+init.model<-lmer(log(init.time)~WordCond*StroopCond+(WordCond+StroopCond|subject), data = end.d) #log initiation time
+summary(init.model)# ooh here is an interesting ineraction: wordcondff*stroopcondinc t = -3.11 LOOK AT MEANS HERE
+error.model<-glmer(error~WordCond*StroopCond+(1|subject), data = end.d, family = "binomial")
+summary(error.model)
+```
+
+look at a plot of RT and init time time(thirds) by condition
+
+```{r}
+RT.p<-ggplot(d2, aes(StroopCond,logRT)) +geom_boxplot()
+RT.p+ facet_wrap(~WordCond)
+
+init.p<-ggplot(d2, aes(StroopCond,log(init.time))) +geom_boxplot()
+               
+init.p+facet_wrap(~WordCond)
+```
+
