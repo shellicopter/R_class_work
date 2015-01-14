@@ -1,0 +1,54 @@
+---
+title: "Day 8 Homework"
+output: html_document
+---
+```{r}
+library(dplyr)
+library(reshape2)
+```
+
+1. Try to recreate the results of Homework 6 (or your intended results) using the `dplyr` functions.
+-For only the accurate trials (error = 0) I'd like to take the mean and standard deviation of each subject for future trimming purposes
+```{r}
+setwd("~/Dropbox/Winter 2015/R class")
+d<- read.csv("AlisonS data.csv") #read in data
+head(d) #peak at data
+d1<-select(d, 1:5,10:12)%>%# only take important cols- ignore MD and AUC for now (still need to work on merging these)
+  filter(error == 0)
+d.melt<-melt(d1, measure.vars = c("init.time", "RT")  )
+head(d.melt)
+summary.d<-d.melt%>%
+group_by(variable, subject)%>%
+summarize(mean = mean(value, na.rm = TRUE), sd= sd(value, na.rm = TRUE))
+summary.d
+```
+
+2. Find another kind of analysis/transformation/summary stat that you want to apply across multiple groups in your data. Use the functions from `reshape2` and `dplyr` to get these results.
+-create a new data frame that takes sub mean and SD and excludes those from the full data set
+```{r}
+trimmed.d<-summary.d%>%
+  mutate(plus2sd = mean+2*sd, minus2sd = mean-2*sd)%>%
+  filter(mean<plus2sd|mean>minus2sd)
+
+trimmed.d
+```
+
+3. For one more practice, try another example of something like #2 (find another stat or grouping or something).
+break this up by condition: first break the code column up into its different levels
+```{r}
+dcode<-colsplit(d.melt$code, "_", c("WordCond", "StroopCond", "half", "third")) # split up code column into 4 more useful columns
+head(dcode)
+d2.melt<-cbind(dcode, d.melt) #combine the new 4 cols with the old data- maybe delete old code col later...
+bycond.d<-d2.melt%>%
+  group_by(variable,WordCond, StroopCond, half)%>%
+  summarize(mean = mean(value), logmean = log(mean(value)), sd = sd(value))
+bycond.d
+#now split this up into RT # 
+#first i have to melt again!
+bycond.long <-melt(bycond.d, measure.vars = c("mean", "logmean", "sd"), variable.name = "measure")
+bycond.long
+casted<-dcast(bycond.long, WordCond+StroopCond+half~variable+measure, value.var ="value")
+casted
+# looks pretty good.
+```
+
