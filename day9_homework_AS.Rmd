@@ -1,0 +1,59 @@
+---
+title: "Day 9 Homework"
+output: html_document
+---
+
+1. Write a function to do a bunch of clean-up and formatting to your data.
+```{r}
+setwd("~/Dropbox/Winter 2015/R class")
+d<- read.csv("AlisonS data.csv") #read in data
+head(d)
+colnames(d)
+
+#remove errors FUNCTION!
+LIMCA.clean<-function(dataframe, acc.col){
+library(dplyr)
+library(reshape2)
+dataframe<-filter(dataframe, acc.col == 0)
+droplevels(dataframe)
+print(summary(dataframe))
+dataframe$acc.col} ## This function was trying to do a lot more but I basically had to narrow it down to this to get it to work and didn't have time to build it back up.
+
+```
+
+2. Make sure this function works on your data.
+```{r}
+LIMCA.clean(dataframe= d, acc.col = "error") # I dont even think this is working anymore (thought it was but doesn't seem to be)
+ summary(d$error)
+```
+
+3. Get some subset of your data, or find a similar-but-not-identical data set.  Change up the column order.  Re-run your function on this new data.  Does it work?
+```{r}
+newdata<-d[3:12,12:3]
+head(newdata) # flip data around
+LIMCA.clean(dataframe = newdata, acc.col = "error")
+```
+
+4. Fix your function to be able to work on the new data.
+```{r}
+
+  
+```
+
+
+
+5. Write a function to do some kind of summary stat, and use the `dplyr` functions to run this function over groups of your data.
+```{r}
+accrate<-function(dataframe, accCol){
+    library(dplyr)
+dataframe$subject<-as.factor(dataframe$subject)
+dataframe%>%
+  group_by(subject)%>%
+  summarize (errorrate = mean(accCol, na.rm = TRUE))
+}
+
+acc.rate(d) #Error in library(., dplyr) : there is no package called ‘.’ ??
+```
+
+
+  
