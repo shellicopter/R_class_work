@@ -1,0 +1,293 @@
+---
+title: "Alison Shell Final Project"
+output: html_document
+---
+
+```{r}
+library(reshape2)
+library(ggplot2)
+library(lme4)
+library(stats)
+library(dplyr)
+library(bear)
+library(multcomp)
+getwd()
+setwd("~/Dropbox/Winter 2015/LIMCA data/JanWork")
+d<- read.csv("AlisonS data.csv") #read in data
+head(d) #peak at data- need to cut out extra columns at end for now
+d1<-d[ ,1:18]# just take the first 18 cols
+head(d1)
+
+d1$subject<-as.character(d1$subject) #code sub as character
+d1$subject<-as.factor(d1$subject)
+d1$trial<-as.character(d1$trial) #code trial as character,
+d1$trial<-as.factor(d1$trial) # then factor
+d1$code<-as.character(d1$code) #code as character,
+d1$code<-as.factor(d1$code) # then factor
+
+```
+combine cols AUC1&2 and MD1&2 into 1 col each:
+```{r}
+d1$AUC<- d1$AUC_2
+length(d1$AUC)
+d1$AUC[is.na(d1$AUC_2)] <-d1$AUC_1[is.na(d1$AUC_2)]
+summary(d1$AUC) #new AUC column!
+#same thing for MD
+
+d1$MD<- d1$MD_2
+d1$MD[is.na(d1$MD_2)] <-d1$MD_1[is.na(d1$MD_2)]
+summary(d1$MD) #new MD column!
+head(d1$MD)
+```
+```
+remove subject 102 and 128 from data (no Stroop data/excluded)
+```{r}
+d1<-filter(d1, subject !=102, subject !=128)
+d1<-droplevels(d1)
+```
+
+split up code into components and bind to dataframe
+```{r}
+dcode<-colsplit(d1$code, "_", c("WordCond", "StroopCond", "half", "third")) # 
+d2<-cbind(dcode, d1) #combine the new 4 cols with the old data- maybe delete old code col later...
+head(d2) #
+d2$half<-as.factor(d2$half)
+d2$third<-as.factor(d2$third)
+```
+
+Split up "stimfile" column nt()by \ and extract the .wav
+```{r}
+z<-"3/saywhen.wav/0;1/GREEN_green.jpg/1200;3/saywhen.wav/0;1/BLUE_blue.jpg/1500;3/*RS*hellfime.wav/500" #this is an example of 1 string to make it work
+z1<-sub(".*?RS\\*(.*?)(\\.wav.*|$)", "\\1", z) #this works!
+#now try on the whole data frame!
+d2$item<-sub(".*?RS\\*(.*?)(\\.wav.*|$)", "\\1", d2$stimfile)
+head(d2) #now we have a new column named "item"
+```
+
+
+Add in Stroop error data and merge
+Below code is simply to get the stroop accuracy data in properly: this is complicated and should be cleared up in future by properly coding the trial #'s in stroop acc sheet
+```{r}
+stroop.d<-read.csv("stroopAcc.csv")
+head(stroop.d) # read in stroop accuracy data
+stroop.melt<-melt(stroop.d, id.vars = "trial", variable_name = "subject") # needed to be melted into long format
+stroop.melt$subject<- gsub("X", "",stroop.melt$subject) # subject ID's aquired an additional "X" - removed here
+stroop.melt$subject<-as.factor(stroop.melt$subject) #turn back into factor
+levels(stroop.melt$subject) # check- all looks good!
+trials.d <-read.csv("subtrials.csv") # now import trial #'s per subject (fillers were not included in the analysis but were included in stroop so these will be merged)
+trials.merge<-merge(trials.d, stroop.melt) # merge
+trials.merge$subject<-as.factor(trials.d$subject)
+trials.merge$trial<-as.factor(trials.d$trial)
+#now merge trials.merge with true data:
+d3<-merge(trials.merge, d2, by = c("subject", "trial"))
+head(d3)
+
+# remove all trials where final stroop was not accurate (value = 0)
+d3.acc<-filter(d3, value ==1) # removed 92 (1.9%) trials
+```
+
+
+For looking at RT data- only look at subset of accurate data
+```{r}
+acc.d<-filter(d3, error ==0)
+acc.d<-droplevels(acc.d)
+summary(acc.d$error) #check- removed 432 (9.3%) trials
+colnames(acc.d)[3] <- "mterror"
+```
+look at distribution of DV's
+```{r}
+head(acc.d)
+ggplot(acc.d, aes(init.time))+geom_histogram() #skewed- log this
+ggplot(acc.d, aes(log(init.time)))+geom_histogram() #this is a bit better but still weird (a really large portion right at 0)
+ggplot(acc.d, aes(RT))+geom_histogram()# a bit skewed- log?
+ggplot(acc.d, aes(log(RT)))+geom_histogram() # log looks MUCH more normal
+ggplot(acc.d, aes(MD))+geom_histogram() #somewhat bi-modal but kind of normal-ish
+ggplot(acc.d, aes(AUC))+geom_histogram() # might want to look into trimming outliers
+```
+trim top and bottom 1.5% of data to remove extraneous outliers:
+```{r}
+quantile(acc.d$RT, c(1.5/100, 98.5/100))
+quantile(acc.d$init.time, c(1.5/100, 98.5/100))
+acc.trim<-filter(acc.d, RT<3132.55,RT>582, init.time<721, init.time>30)
+summary(acc.trim) # trimmed 1354/4616 (29%) of trials
+```
+Trim data by subject:
+```{r}
+#first melt init.time and RT into a value colum, then get mean and sd of both
+head(acc.trim)
+d.melt<-melt(acc.trim, measure.vars = c("init.time", "RT")  )
+summ.d<-d.melt%>%
+  group_by(variable, subject)%>%
+  summarize(mean = mean(value, na.rm = TRUE), sd= sd(value, na.rm = TRUE))
+summ.d
+#now trim by mean and 2sds by subject:
+trimmed.d<-summ.d%>%
+  mutate(plus2sd = mean+2*sd, minus2sd = mean-2*sd)
+trimmed.d
+trim.merge<-merge(d.melt, trimmed.d)
+head(trim.merge)
+trimmed.merge<-filter(trim.merge, value>minus2sd&value<plus2sd) # 269 (4.5%)trials removed
+
+
+#now recast back
+trimmed.merge2<-trimmed.merge[,1:26]
+casted<-dcast(trimmed.merge2, subject+trial+mterror+WordCond+StroopCond+half+third+stimfile+condition+code+error+x.flip+AUC+MD+item~variable, value.var ="value")
+head(casted)
+```
+
+#ANALYSIS
+First contrast code factors:
+```{r}
+end.d<-casted
+end.d$StroopCond<-as.factor(end.d$StroopCond)
+contrasts(end.d$StroopCond) <- c(-0.5,0.5)
+end.d$WordCond<-as.factor(end.d$WordCond)
+contrasts(end.d$WordCond) <- c(-.5, .5, 0)
+```
+
+Then run a preliminary analysis on logRT and init.time by word*stroop cond:
+#Analysis on ALL data
+```{r}
+end.d$item<-as.factor(end.d$item) #make sure item is a factor
+logRT.model<-lmer(log(RT)~WordCond*StroopCond+(WordCond*StroopCond|subject), data = end.d)
+summary(logRT.model) # main effects- no interactions
+init.model<-lmer(init.time~WordCond*StroopCond+(WordCond*StroopCond|subject), data = end.d) #initiation time
+summary(init.model) # no interactions - no effects of stroop...
+```
+-analysis on errors per condition:
+```{r}
+d2$StroopCond<-as.factor(d2$StroopCond)
+contrasts(d2$StroopCond) <- c(-0.5,0.5)
+d2$WordCond<-as.factor(d2$WordCond)
+levels(d2$WordCond)
+contrasts(d2$WordCond) <- c(-.5, .5, 1)
+contrasts(d2$WordCond)
+error.model <-glmer(error~WordCond*StroopCond+(1|subject) +(1|item), data = d2, family = "binomial")
+summary(error.model) # main effect of wordcond but not stroop or interaction
+```
+#Analyses without the first 1/3rd of trials
+```{r}
+#note: for analyses the full models would not converge so I used reduced models...maybe try different optimizers?
+end.d <-end.d[end.d$third != "t1",]
+end.d<-droplevels(end.d)
+summary(end.d)
+# changing contrasts here changes outcome! careful!
+# this contrast drops out neutral trials since we really mostly care about the ff/cognate contrast
+contrasts(end.d$StroopCond) <- c(-0.5,0.5)
+contrasts(end.d$WordCond) <- c(-.5, .5, 0) 
+logRT.model<-lmer(log(RT)~WordCond*StroopCond+(WordCond+StroopCond|subject) +(WordCond+StroopCond|item), data = end.d)
+summary(logRT.model) #main effect of word and stroop: close to an interaction of word*stroop
+init.model<-lmer(init.time~WordCond*StroopCond+(WordCond+StroopCond|subject) +(WordCond+StroopCond|item), data = end.d) #log initiation time
+summary(init.model)# there is  a trend for stroopinc*ff
+save(init.model, file = "end. init time model.RData")
+                                           
+  
+#error model for end data:
+end.all<-d2[d2$third != "t1", ]
+contrasts(end.all$StroopCond) <- c(-0.5,0.5)
+contrasts(end.all$WordCond) <- c(-.5, .5, 0) 
+
+error.model<-glmer(error~WordCond*StroopCond+(1|subject)+ (1|item), data = end.all, family = "binomial")
+summary(error.model) #ME Word1, Stroop1, and interaction w1*s1 (z = -2.037, p = .041)
+save(error.model, file = "error rate model.RData")
+
+
+```
+
+
+#PLOTS!
+look at a plot of RT and init time over time(thirds) by condition
+
+```{r}
+RT.p<-ggplot(end.d, aes(StroopCond, log(RT), fill= StroopCond)) +geom_boxplot()+ facet_wrap(~WordCond)+theme_bw()
+RT.p
+init.p<-ggplot(end.d, aes(StroopCond,log(init.time), fill = StroopCond)) +geom_boxplot()+facet_wrap(~WordCond)+theme_bw()
+init.p
+MD.p<-ggplot(end.d, aes(StroopCond,MD,fill = StroopCond)) +geom_boxplot()+facet_wrap(~WordCond)+theme_bw()
+MD.p
+```
+
+-error rate plot
+```{r}
+bysubs.end.error <-dcast(end.all, subject + WordCond + StroopCond ~ ., value.var = "error", fun.aggregate = ,mean, na.rm=TRUE)
+head(bysubs.end.error)
+colnames(bysubs.end.error)[4] <- "errorRate"
+bysubs.sum <- summarySEwithin(bysubs.end.error, measurevar="errorRate", withinvars=c("WordCond","StroopCond"), idvar="subject")
+bysubs.sum
+plot<- ggplot(bysubs.sum, aes(x=WordCond, y=errorRate, colour = StroopCond, shape = StroopCond, stat="identity")) +
+geom_pointrange(aes(ymax=errorRate+se, ymin=errorRate-se), size = 1, position = position_dodge(w=.4))
+plot
+```
+-x.flip plot
+```{r}
+bysubs.end.xflip <-dcast(end.all, subject + WordCond + StroopCond ~ ., value.var = "x.flip", fun.aggregate = ,mean, na.rm=TRUE)
+head(bysubs.end.xflip)
+colnames(bysubs.end.xflip)[4] <- "fliprate"
+bysubs.flip.sum <- summarySEwithin(bysubs.end.xflip, measurevar="fliprate", withinvars=c("WordCond","StroopCond"), idvar="subject")
+bysubs.flip.sum
+plot<- ggplot(bysubs.flip.sum, aes(x=WordCond, y=fliprate, colour = StroopCond, shape = StroopCond, stat="identity")) +
+geom_pointrange(aes(ymax=fliprate+se, ymin=fliprate-se), size = 1, position = position_dodge(w=.4))
+plot
+```
+
+
+
+
+Checking cell means to understand interactions- make tables, etc.
+```{r}
+#these use acc.d- only looking at accurate trials here
+mean.RT<-dcast(end.d, WordCond~StroopCond, value.var = "RT", fun.aggregate = ,mean, na.rm=TRUE)
+mean.RT #main effect of Stroop: inc >con
+mean.init.time<-dcast(end.d, WordCond~StroopCond, value.var = "init.time", fun.aggregate = ,mean, na.rm=TRUE)
+mean.init.time#looks like inc increases RT for cognates but reduces RT for ff
+mean.AUC<-dcast(end.d, WordCond~StroopCond, value.var = "AUC", fun.aggregate = ,mean, na.rm=TRUE)
+#mean.AUC
+mean.MD<-dcast(end.d, WordCond~StroopCond, value.var = "MD", fun.aggregate = ,mean, na.rm=TRUE)
+#mean.MD
+
+#error rate uses all data (just looking at last 2/3rds)
+mean.error.rate<-dcast(end.all, WordCond~StroopCond, value.var = "error", fun.aggregate = ,mean, na.rm=TRUE) # 
+mean.error.rate #maybe a tiny interaction here with reduced error rate on inc trials for ff but increased for cog/neutral?
+```
+```
+#plot RT measure trajectories over trials for exploration of data
+```{r}
+#first look at init.time:
+learning.init <-dcast(d2,  trial+WordCond + StroopCond ~ ., value.var = "init.time", fun.aggregate = ,mean, na.rm=TRUE)
+colnames(learning.init)[4] <- "init.time"
+head(learning.init)
+learning.init$trial<-as.integer(learning.init$trial)
+ggplot(learning.init, aes(trial, init.time))+geom_point(aes(color = WordCond))+facet_grid(WordCond ~StroopCond)+geom_smooth(method = "lm")
+#now look at RT:
+learning.RT <-dcast(d2,  trial+WordCond + StroopCond ~ ., value.var = "RT", fun.aggregate = ,mean, na.rm=TRUE)
+colnames(learning.RT)[4] <- "RT"
+head(learning.RT)
+learning.RT$trial<-as.integer(learning.RT$trial)
+ggplot(learning.RT, aes(trial, RT))+geom_point(aes(color = WordCond))+facet_grid(WordCond ~StroopCond)+geom_smooth(method = "lm") 
+# interestingly it looks like RT increased somewhat for Con/Cog- and decreased a lot in inc neutrals
+#same thing for x.flip:
+learning.flip <-dcast(d2,  trial+WordCond + StroopCond ~ ., value.var = "x.flip", fun.aggregate = ,mean, na.rm=TRUE)
+colnames(learning.flip)[4] <- "flip"
+head(learning.flip)
+learning.flip$trial<-as.integer(learning.flip$trial)
+ggplot(learning.flip, aes(trial, flip))+geom_point(aes(color = WordCond))+facet_grid(WordCond ~StroopCond)+geom_smooth(method = "lm") 
+# here it looks like steeper decline on incongruent- interesting
+```
+
+
+#Offline vocab test
+```{r}
+ vocab.d<-read.csv("LIMYvocab.csv") #import vocab data
+ head(vocab.d)
+# #quick analysis
+ vocab.m<-glmer(error~wordcond*stroop+(1|subject) +(1|sound), data = vocab.d, family = "binomial")
+summary(vocab.m) #looks like no effect of stroop here
+ bysubs.d1 <- dcast(vocab.d, subject + wordcond + stroop ~ ., fun.aggregate = mean, na.rm=TRUE, value.var = "error")
+ head(bysubs.d1)
+ colnames(bysubs.d1)[4] <- "acc.vocab"
+ bysubs.sum <- summarySEwithin(bysubs.d1, measurevar="acc.vocab", withinvars=c("wordcond","stroop"), idvar="subject")
+ plot<- ggplot(bysubs.sum, aes(x=wordcond, y=acc.vocab, colour = stroop, shape = stroop, stat="identity")) +
+geom_pointrange(aes(ymax=acc.vocab+se, ymin=acc.vocab-se), size = 1, position = position_dodge(w=.4))
+plot 
+# #not much excitement here (no interactions for sure) this looks different from the learning trials oddly
+```
